@@ -16,8 +16,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import com.example.calculator.ui.theme.CalculatorTheme
 import java.io.File
 import java.io.FileOutputStream
@@ -50,13 +49,11 @@ fun AppContent() {
     var isVaultOpen by remember { mutableStateOf(false) }
     var showChangePin by remember { mutableStateOf(false) }
 
-    // Default PIN is 1234 if not set
     val secretPin = prefs.getString("secret_pin", "1234") ?: "1234"
 
     if (isVaultOpen) {
         if (showChangePin) {
             ChangePinScreen(
-                currentPin = secretPin,
                 onPinChanged = { newPin ->
                     prefs.edit().putString("secret_pin", newPin).apply()
                     showChangePin = false
@@ -86,14 +83,8 @@ fun CalculatorScreen(
     var previousValue by remember { mutableStateOf(0.0) }
     var operation by remember { mutableStateOf("") }
     var newNumber by remember { mutableStateOf(true) }
-    var enteredPin by remember { mutableStateOf("") }
 
     fun onNumberClick(number: String) {
-        // Also track for secret PIN
-        if (enteredPin.length < 10) {
-            enteredPin += number
-        }
-
         if (newNumber) {
             display = number
             newNumber = false
@@ -107,15 +98,13 @@ fun CalculatorScreen(
         previousValue = display.toDoubleOrNull() ?: 0.0
         operation = op
         newNumber = true
-        enteredPin = "" // reset pin tracking on operator
     }
 
     fun onEqualsClick() {
-        // Check if entered display matches secret PIN → unlock vault
-        if (display == secretPin || enteredPin == secretPin) {
+        // Secret PIN check
+        if (display == secretPin) {
             onVaultUnlock()
             display = "0"
-            enteredPin = ""
             newNumber = true
             return
         }
@@ -134,7 +123,6 @@ fun CalculatorScreen(
         }
         operation = ""
         newNumber = true
-        enteredPin = ""
     }
 
     fun onClear() {
@@ -142,17 +130,14 @@ fun CalculatorScreen(
         previousValue = 0.0
         operation = ""
         newNumber = true
-        enteredPin = ""
     }
 
     fun onDelete() {
         if (display.length > 1) {
             display = display.dropLast(1)
-            if (enteredPin.isNotEmpty()) enteredPin = enteredPin.dropLast(1)
         } else {
             display = "0"
             newNumber = true
-            enteredPin = ""
         }
     }
 
@@ -262,7 +247,7 @@ fun VaultScreen(
         File(context.filesDir, "secret_vault").apply { if (!exists()) mkdirs() }
     }
 
-    var files by remember { mutableStateOf(vaultDir.listFiles()?.toList() ?: emptyList()) }
+    var files by remember { mutableStateOf(vaultDir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList()) }
     var showDeleteConfirm by remember { mutableStateOf<File?>(null) }
 
     val filePicker = rememberLauncherForActivityResult(
@@ -277,7 +262,7 @@ fun VaultScreen(
                         input.copyTo(output)
                     }
                 }
-                files = vaultDir.listFiles()?.toList() ?: emptyList()
+                files = vaultDir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -299,17 +284,17 @@ fun VaultScreen(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "🔒 Secret Vault",
+                text = "Secret Vault",
                 color = Color.White,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold
             )
-            Row {
-                IconButton(onClick = onChangePin) {
-                    Icon(Icons.Default.Lock, contentDescription = "Change PIN", tint = Color.White)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onChangePin) {
+                    Text("PIN", color = Color(0xFFFF9500))
                 }
-                IconButton(onClick = onLock) {
-                    Icon(Icons.Default.Close, contentDescription = "Lock", tint = Color.White)
+                TextButton(onClick = onLock) {
+                    Text("Lock", color = Color.White)
                 }
             }
         }
@@ -322,9 +307,7 @@ fun VaultScreen(
                 .padding(16.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9500))
         ) {
-            Icon(Icons.Default.Add, contentDescription = null)
-            Spacer(Modifier = Modifier.width(8.dp))
-            Text("Add Photo / Video / File")
+            Text("+ Add Photo / Video / File")
         }
 
         if (files.isEmpty()) {
@@ -350,15 +333,14 @@ fun VaultScreen(
                             .fillMaxWidth()
                             .padding(vertical = 6.dp)
                             .clickable {
-                                // Open file with system viewer
                                 try {
-                                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                                    val uri = FileProvider.getUriForFile(
                                         context,
                                         "${context.packageName}.provider",
                                         file
                                     )
                                     val intent = Intent(Intent.ACTION_VIEW).apply {
-                                        setDataAndType(uri, context.contentResolver.getType(uri) ?: "*/*")
+                                        setDataAndType(uri, getMimeType(file.name))
                                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     }
                                     context.startActivity(intent)
@@ -375,17 +357,9 @@ fun VaultScreen(
                                 .padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = when {
-                                    file.name.endsWith(".mp4", true) || file.name.endsWith(".mkv", true) ||
-                                    file.name.endsWith(".avi", true) -> Icons.Default.PlayArrow
-                                    file.name.endsWith(".jpg", true) || file.name.endsWith(".png", true) ||
-                                    file.name.endsWith(".jpeg", true) || file.name.endsWith(".webp", true) -> Icons.Default.Image
-                                    else -> Icons.Default.InsertDriveFile
-                                },
-                                contentDescription = null,
-                                tint = Color(0xFFFF9500),
-                                modifier = Modifier.size(32.dp)
+                            Text(
+                                text = getFileEmoji(file.name),
+                                fontSize = 28.sp
                             )
                             Spacer(modifier = Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
@@ -395,13 +369,13 @@ fun VaultScreen(
                                     maxLines = 1
                                 )
                                 Text(
-                                    text = "${file.length() / 1024} KB",
+                                    text = formatFileSize(file.length()),
                                     color = Color.Gray,
                                     fontSize = 12.sp
                                 )
                             }
-                            IconButton(onClick = { showDeleteConfirm = file }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red)
+                            TextButton(onClick = { showDeleteConfirm = file }) {
+                                Text("Delete", color = Color.Red, fontSize = 12.sp)
                             }
                         }
                     }
@@ -410,7 +384,6 @@ fun VaultScreen(
         }
     }
 
-    // Delete confirmation
     showDeleteConfirm?.let { file ->
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = null },
@@ -419,7 +392,7 @@ fun VaultScreen(
             confirmButton = {
                 TextButton(onClick = {
                     file.delete()
-                    files = vaultDir.listFiles()?.toList() ?: emptyList()
+                    files = vaultDir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList()
                     showDeleteConfirm = null
                 }) {
                     Text("Delete", color = Color.Red)
@@ -436,7 +409,6 @@ fun VaultScreen(
 
 @Composable
 fun ChangePinScreen(
-    currentPin: String,
     onPinChanged: (String) -> Unit,
     onBack: () -> Unit
 ) {
@@ -488,9 +460,7 @@ fun ChangePinScreen(
                 when {
                     newPin.length < 4 -> error = "PIN must be at least 4 digits"
                     newPin != confirmPin -> error = "PINs do not match"
-                    else -> {
-                        onPinChanged(newPin)
-                    }
+                    else -> onPinChanged(newPin)
                 }
             },
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9500)),
@@ -514,4 +484,38 @@ fun getFileName(context: Context, uri: Uri): String? {
         }
     }
     return name
+}
+
+fun getFileEmoji(name: String): String {
+    val lower = name.lowercase()
+    return when {
+        lower.endsWith(".mp4") || lower.endsWith(".mkv") || lower.endsWith(".avi") || lower.endsWith(".mov") -> "🎬"
+        lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png") || lower.endsWith(".webp") || lower.endsWith(".gif") -> "🖼️"
+        lower.endsWith(".pdf") -> "📄"
+        lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".m4a") -> "🎵"
+        else -> "📁"
+    }
+}
+
+fun getMimeType(name: String): String {
+    val lower = name.lowercase()
+    return when {
+        lower.endsWith(".mp4") -> "video/mp4"
+        lower.endsWith(".mkv") -> "video/x-matroska"
+        lower.endsWith(".jpg") || lower.endsWith(".jpeg") -> "image/jpeg"
+        lower.endsWith(".png") -> "image/png"
+        lower.endsWith(".webp") -> "image/webp"
+        lower.endsWith(".gif") -> "image/gif"
+        lower.endsWith(".pdf") -> "application/pdf"
+        lower.endsWith(".mp3") -> "audio/mpeg"
+        else -> "*/*"
+    }
+}
+
+fun formatFileSize(bytes: Long): String {
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+        else -> "${bytes / (1024 * 1024)} MB"
+    }
 }
