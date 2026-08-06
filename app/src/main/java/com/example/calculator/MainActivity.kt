@@ -35,7 +35,6 @@ import com.example.calculator.ui.theme.CalculatorTheme
 import java.io.File
 import java.io.FileOutputStream
 
-// Professional Color Palette
 object AppColors {
     val Background = Color(0xFF0D0D0D)
     val Surface = Color(0xFF1A1A1A)
@@ -43,12 +42,10 @@ object AppColors {
     val ButtonDark = Color(0xFF2C2C2C)
     val ButtonGray = Color(0xFF3A3A3A)
     val Accent = Color(0xFFFF9F0A)
-    val AccentDark = Color(0xFFE08A00)
     val TextPrimary = Color(0xFFFFFFFF)
     val TextSecondary = Color(0xFFABABAB)
     val TextMuted = Color(0xFF6B6B6B)
     val Danger = Color(0xFFFF453A)
-    val Success = Color(0xFF30D158)
 }
 
 class MainActivity : ComponentActivity() {
@@ -137,7 +134,7 @@ fun CalculatorScreen(
             else -> current
         }
         display = if (result.isNaN()) "Error" else {
-            if (result % 1 == 0.0) result.toInt().toString()
+            if (result % 1 == 0.0) result.toLong().toString()
             else String.format("%.8f", result).trimEnd('0').trimEnd('.')
         }
         operation = ""
@@ -160,6 +157,11 @@ fun CalculatorScreen(
         }
     }
 
+    fun formatPrev(): String {
+        return if (previousValue % 1 == 0.0) previousValue.toLong().toString()
+        else previousValue.toString()
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -171,7 +173,6 @@ fun CalculatorScreen(
                 .padding(horizontal = 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.Bottom
         ) {
-            // Display Area
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -181,7 +182,7 @@ fun CalculatorScreen(
                 Column(horizontalAlignment = Alignment.End) {
                     if (operation.isNotEmpty()) {
                         Text(
-                            text = "${previousValue.toLongOrNull() ?: previousValue} $operation",
+                            text = "${formatPrev()} $operation",
                             color = AppColors.TextMuted,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Light
@@ -200,7 +201,6 @@ fun CalculatorScreen(
                 }
             }
 
-            // Buttons
             val buttons = listOf(
                 listOf("C", "⌫", "%", "÷"),
                 listOf("7", "8", "9", "×"),
@@ -315,7 +315,6 @@ fun VaultScreen(
             .fillMaxSize()
             .background(AppColors.Background)
     ) {
-        // Professional Top Bar
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -345,37 +344,28 @@ fun VaultScreen(
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Surface(
-                        onClick = onChangePin,
-                        shape = RoundedCornerShape(12.dp),
-                        color = AppColors.SurfaceElevated
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(AppColors.SurfaceElevated)
+                            .clickable { onChangePin() }
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
                     ) {
-                        Text(
-                            text = "PIN",
-                            color = AppColors.Accent,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-                        )
+                        Text("PIN", color = AppColors.Accent, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     }
-                    Surface(
-                        onClick = onLock,
-                        shape = RoundedCornerShape(12.dp),
-                        color = AppColors.SurfaceElevated
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(AppColors.SurfaceElevated)
+                            .clickable { onLock() }
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
                     ) {
-                        Text(
-                            text = "Lock",
-                            color = AppColors.TextPrimary,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-                        )
+                        Text("Lock", color = AppColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             }
         }
 
-        // Add Button
         Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
             Button(
                 onClick = { filePicker.launch("*/*") },
@@ -385,12 +375,7 @@ fun VaultScreen(
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent)
             ) {
-                Text(
-                    text = "+  Add Files",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.Black
-                )
+                Text("+  Add Files", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
             }
         }
 
@@ -400,23 +385,9 @@ fun VaultScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "📭",
-                        fontSize = 48.sp
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "No files yet",
-                        color = AppColors.TextSecondary,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Text("No files yet", color = AppColors.TextSecondary, fontSize = 18.sp, fontWeight = FontWeight.Medium)
                     Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Add photos, videos or any file",
-                        color = AppColors.TextMuted,
-                        fontSize = 14.sp
-                    )
+                    Text("Add photos, videos or any file", color = AppColors.TextMuted, fontSize = 14.sp)
                 }
             }
         } else {
@@ -427,10 +398,12 @@ fun VaultScreen(
                 contentPadding = PaddingValues(bottom = 24.dp)
             ) {
                 items(files) { file ->
-                    Surface(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 5.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(AppColors.SurfaceElevated)
                             .clickable {
                                 try {
                                     val uri = FileProvider.getUriForFile(
@@ -446,14 +419,11 @@ fun VaultScreen(
                                 } catch (e: Exception) {
                                     e.printStackTrace()
                                 }
-                            },
-                        shape = RoundedCornerShape(16.dp),
-                        color = AppColors.SurfaceElevated
+                            }
+                            .padding(16.dp)
                     ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
@@ -482,9 +452,12 @@ fun VaultScreen(
                                     fontSize = 12.sp
                                 )
                             }
-                            TextButton(onClick = { showDeleteConfirm = file }) {
-                                Text("Delete", color = AppColors.Danger, fontSize = 13.sp)
-                            }
+                            Text(
+                                text = "Delete",
+                                color = AppColors.Danger,
+                                fontSize = 13.sp,
+                                modifier = Modifier.clickable { showDeleteConfirm = file }
+                            )
                         }
                     }
                 }
@@ -500,10 +473,7 @@ fun VaultScreen(
                 Text("Delete file?", color = AppColors.TextPrimary, fontWeight = FontWeight.SemiBold)
             },
             text = {
-                Text(
-                    "Are you sure you want to permanently delete\n${file.name}?",
-                    color = AppColors.TextSecondary
-                )
+                Text("Are you sure you want to delete\n${file.name}?", color = AppColors.TextSecondary)
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -541,18 +511,9 @@ fun ChangePinScreen(
     ) {
         Spacer(modifier = Modifier.height(40.dp))
 
-        Text(
-            text = "Change PIN",
-            color = AppColors.TextPrimary,
-            fontSize = 26.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        Text("Change PIN", color = AppColors.TextPrimary, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Enter a new 4–8 digit PIN",
-            color = AppColors.TextMuted,
-            fontSize = 14.sp
-        )
+        Text("Enter a new 4–8 digit PIN", color = AppColors.TextMuted, fontSize = 14.sp)
 
         Spacer(modifier = Modifier.height(40.dp))
 
@@ -640,11 +601,11 @@ fun getFileName(context: Context, uri: Uri): String? {
 fun getFileEmoji(name: String): String {
     val lower = name.lowercase()
     return when {
-        lower.endsWith(".mp4") || lower.endsWith(".mkv") || lower.endsWith(".avi") || lower.endsWith(".mov") -> "🎬"
-        lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png") || lower.endsWith(".webp") || lower.endsWith(".gif") -> "🖼️"
-        lower.endsWith(".pdf") -> "📄"
-        lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".m4a") -> "🎵"
-        else -> "📁"
+        lower.endsWith(".mp4") || lower.endsWith(".mkv") || lower.endsWith(".avi") || lower.endsWith(".mov") -> "VID"
+        lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png") || lower.endsWith(".webp") || lower.endsWith(".gif") -> "IMG"
+        lower.endsWith(".pdf") -> "PDF"
+        lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".m4a") -> "AUD"
+        else -> "FILE"
     }
 }
 
