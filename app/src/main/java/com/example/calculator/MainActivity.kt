@@ -20,16 +20,36 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.example.calculator.ui.theme.CalculatorTheme
 import java.io.File
 import java.io.FileOutputStream
+
+// Professional Color Palette
+object AppColors {
+    val Background = Color(0xFF0D0D0D)
+    val Surface = Color(0xFF1A1A1A)
+    val SurfaceElevated = Color(0xFF242424)
+    val ButtonDark = Color(0xFF2C2C2C)
+    val ButtonGray = Color(0xFF3A3A3A)
+    val Accent = Color(0xFFFF9F0A)
+    val AccentDark = Color(0xFFE08A00)
+    val TextPrimary = Color(0xFFFFFFFF)
+    val TextSecondary = Color(0xFFABABAB)
+    val TextMuted = Color(0xFF6B6B6B)
+    val Danger = Color(0xFFFF453A)
+    val Success = Color(0xFF30D158)
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,7 +110,7 @@ fun CalculatorScreen(
             newNumber = false
         } else {
             if (display == "0") display = number
-            else display += number
+            else if (display.length < 12) display += number
         }
     }
 
@@ -101,7 +121,6 @@ fun CalculatorScreen(
     }
 
     fun onEqualsClick() {
-        // Secret PIN check
         if (display == secretPin) {
             onVaultUnlock()
             display = "0"
@@ -141,95 +160,115 @@ fun CalculatorScreen(
         }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF1C1C1C))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Bottom
+            .background(AppColors.Background)
     ) {
-        Text(
-            text = display,
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 24.dp),
-            color = Color.White,
-            fontSize = 48.sp,
-            fontWeight = FontWeight.Light,
-            textAlign = TextAlign.End,
-            maxLines = 1
-        )
-
-        val buttons = listOf(
-            listOf("C", "⌫", "%", "÷"),
-            listOf("7", "8", "9", "×"),
-            listOf("4", "5", "6", "-"),
-            listOf("1", "2", "3", "+"),
-            listOf("0", ".", "=")
-        )
-
-        buttons.forEach { row ->
-            Row(
+                .fillMaxSize()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.Bottom
+        ) {
+            // Display Area
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(bottom = 32.dp),
+                contentAlignment = Alignment.BottomEnd
             ) {
-                row.forEach { label ->
-                    val isOperator = label in listOf("÷", "×", "-", "+", "=")
-                    val isSpecial = label in listOf("C", "⌫", "%")
-
-                    val backgroundColor = when {
-                        label == "=" -> Color(0xFFFF9500)
-                        isOperator -> Color(0xFFFF9500)
-                        isSpecial -> Color(0xFFA5A5A5)
-                        else -> Color(0xFF333333)
-                    }
-
-                    val textColor = when {
-                        isSpecial -> Color.Black
-                        else -> Color.White
-                    }
-
-                    val weight = if (label == "0") 2f else 1f
-
-                    Button(
-                        onClick = {
-                            when (label) {
-                                "C" -> onClear()
-                                "⌫" -> onDelete()
-                                "%" -> {
-                                    val value = display.toDoubleOrNull() ?: 0.0
-                                    display = (value / 100).toString()
-                                }
-                                "÷", "×", "-", "+" -> onOperationClick(label)
-                                "=" -> onEqualsClick()
-                                "." -> {
-                                    if (!display.contains(".")) {
-                                        if (newNumber) {
-                                            display = "0."
-                                            newNumber = false
-                                        } else display += "."
-                                    }
-                                }
-                                else -> onNumberClick(label)
-                            }
-                        },
-                        modifier = Modifier
-                            .weight(weight)
-                            .height(72.dp),
-                        shape = CircleShape,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = backgroundColor,
-                            contentColor = textColor
-                        ),
-                        contentPadding = PaddingValues(0.dp)
-                    ) {
+                Column(horizontalAlignment = Alignment.End) {
+                    if (operation.isNotEmpty()) {
                         Text(
-                            text = label,
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Medium
+                            text = "${previousValue.toLongOrNull() ?: previousValue} $operation",
+                            color = AppColors.TextMuted,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Light
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                    Text(
+                        text = display,
+                        color = AppColors.TextPrimary,
+                        fontSize = if (display.length > 8) 42.sp else 56.sp,
+                        fontWeight = FontWeight.Light,
+                        fontFamily = FontFamily.SansSerif,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            // Buttons
+            val buttons = listOf(
+                listOf("C", "⌫", "%", "÷"),
+                listOf("7", "8", "9", "×"),
+                listOf("4", "5", "6", "-"),
+                listOf("1", "2", "3", "+"),
+                listOf("0", ".", "=")
+            )
+
+            buttons.forEach { row ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    row.forEach { label ->
+                        val isOperator = label in listOf("÷", "×", "-", "+", "=")
+                        val isSpecial = label in listOf("C", "⌫", "%")
+                        val weight = if (label == "0") 2.1f else 1f
+
+                        val bgColor = when {
+                            label == "=" -> AppColors.Accent
+                            isOperator -> AppColors.Accent
+                            isSpecial -> AppColors.ButtonGray
+                            else -> AppColors.ButtonDark
+                        }
+
+                        val textColor = when {
+                            isSpecial -> AppColors.Background
+                            else -> AppColors.TextPrimary
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(weight)
+                                .height(74.dp)
+                                .clip(CircleShape)
+                                .background(bgColor)
+                                .clickable {
+                                    when (label) {
+                                        "C" -> onClear()
+                                        "⌫" -> onDelete()
+                                        "%" -> {
+                                            val value = display.toDoubleOrNull() ?: 0.0
+                                            display = (value / 100).toString()
+                                        }
+                                        "÷", "×", "-", "+" -> onOperationClick(label)
+                                        "=" -> onEqualsClick()
+                                        "." -> {
+                                            if (!display.contains(".")) {
+                                                if (newNumber) {
+                                                    display = "0."
+                                                    newNumber = false
+                                                } else display += "."
+                                            }
+                                        }
+                                        else -> onNumberClick(label)
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                color = textColor,
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                     }
                 }
             }
@@ -247,7 +286,9 @@ fun VaultScreen(
         File(context.filesDir, "secret_vault").apply { if (!exists()) mkdirs() }
     }
 
-    var files by remember { mutableStateOf(vaultDir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList()) }
+    var files by remember {
+        mutableStateOf(vaultDir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList())
+    }
     var showDeleteConfirm by remember { mutableStateOf<File?>(null) }
 
     val filePicker = rememberLauncherForActivityResult(
@@ -272,42 +313,85 @@ fun VaultScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF121212))
+            .background(AppColors.Background)
     ) {
-        // Top Bar
-        Row(
+        // Professional Top Bar
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFF1C1C1C))
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .background(
+                    Brush.verticalGradient(
+                        listOf(AppColors.Surface, AppColors.Background)
+                    )
+                )
+                .padding(horizontal = 20.dp, vertical = 18.dp)
         ) {
-            Text(
-                text = "Secret Vault",
-                color = Color.White,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onChangePin) {
-                    Text("PIN", color = Color(0xFFFF9500))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = "Vault",
+                        color = AppColors.TextPrimary,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "${files.size} items secured",
+                        color = AppColors.TextMuted,
+                        fontSize = 13.sp
+                    )
                 }
-                TextButton(onClick = onLock) {
-                    Text("Lock", color = Color.White)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(
+                        onClick = onChangePin,
+                        shape = RoundedCornerShape(12.dp),
+                        color = AppColors.SurfaceElevated
+                    ) {
+                        Text(
+                            text = "PIN",
+                            color = AppColors.Accent,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                        )
+                    }
+                    Surface(
+                        onClick = onLock,
+                        shape = RoundedCornerShape(12.dp),
+                        color = AppColors.SurfaceElevated
+                    ) {
+                        Text(
+                            text = "Lock",
+                            color = AppColors.TextPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                        )
+                    }
                 }
             }
         }
 
-        // Add File Button
-        Button(
-            onClick = { filePicker.launch("*/*") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9500))
-        ) {
-            Text("+ Add Photo / Video / File")
+        // Add Button
+        Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
+            Button(
+                onClick = { filePicker.launch("*/*") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent)
+            ) {
+                Text(
+                    text = "+  Add Files",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.Black
+                )
+            }
         }
 
         if (files.isEmpty()) {
@@ -315,23 +399,38 @@ fun VaultScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "No files yet.\nTap + to add photos, videos or any file.",
-                    color = Color.Gray,
-                    textAlign = TextAlign.Center
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "📭",
+                        fontSize = 48.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "No files yet",
+                        color = AppColors.TextSecondary,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Add photos, videos or any file",
+                        color = AppColors.TextMuted,
+                        fontSize = 14.sp
+                    )
+                }
             }
         } else {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp)
+                    .padding(horizontal = 16.dp),
+                contentPadding = PaddingValues(bottom = 24.dp)
             ) {
                 items(files) { file ->
-                    Card(
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 6.dp)
+                            .padding(vertical = 5.dp)
                             .clickable {
                                 try {
                                     val uri = FileProvider.getUriForFile(
@@ -348,8 +447,8 @@ fun VaultScreen(
                                     e.printStackTrace()
                                 }
                             },
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A)),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(16.dp),
+                        color = AppColors.SurfaceElevated
                     ) {
                         Row(
                             modifier = Modifier
@@ -357,25 +456,34 @@ fun VaultScreen(
                                 .padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = getFileEmoji(file.name),
-                                fontSize = 28.sp
-                            )
-                            Spacer(modifier = Modifier.width(16.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(AppColors.Surface),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(text = getFileEmoji(file.name), fontSize = 22.sp)
+                            }
+                            Spacer(modifier = Modifier.width(14.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = file.name,
-                                    color = Color.White,
-                                    maxLines = 1
+                                    color = AppColors.TextPrimary,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
+                                Spacer(modifier = Modifier.height(3.dp))
                                 Text(
                                     text = formatFileSize(file.length()),
-                                    color = Color.Gray,
+                                    color = AppColors.TextMuted,
                                     fontSize = 12.sp
                                 )
                             }
                             TextButton(onClick = { showDeleteConfirm = file }) {
-                                Text("Delete", color = Color.Red, fontSize = 12.sp)
+                                Text("Delete", color = AppColors.Danger, fontSize = 13.sp)
                             }
                         }
                     }
@@ -387,20 +495,28 @@ fun VaultScreen(
     showDeleteConfirm?.let { file ->
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = null },
-            title = { Text("Delete file?") },
-            text = { Text("Are you sure you want to delete ${file.name}?") },
+            containerColor = AppColors.Surface,
+            title = {
+                Text("Delete file?", color = AppColors.TextPrimary, fontWeight = FontWeight.SemiBold)
+            },
+            text = {
+                Text(
+                    "Are you sure you want to permanently delete\n${file.name}?",
+                    color = AppColors.TextSecondary
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     file.delete()
                     files = vaultDir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList()
                     showDeleteConfirm = null
                 }) {
-                    Text("Delete", color = Color.Red)
+                    Text("Delete", color = AppColors.Danger, fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = null }) {
-                    Text("Cancel")
+                    Text("Cancel", color = AppColors.TextSecondary)
                 }
             }
         )
@@ -419,23 +535,42 @@ fun ChangePinScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF121212))
+            .background(AppColors.Background)
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Spacer(modifier = Modifier.height(40.dp))
+
         Text(
-            text = "Change Secret PIN",
-            color = Color.White,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 32.dp)
+            text = "Change PIN",
+            color = AppColors.TextPrimary,
+            fontSize = 26.sp,
+            fontWeight = FontWeight.SemiBold
         )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Enter a new 4–8 digit PIN",
+            color = AppColors.TextMuted,
+            fontSize = 14.sp
+        )
+
+        Spacer(modifier = Modifier.height(40.dp))
 
         OutlinedTextField(
             value = newPin,
             onValueChange = { if (it.length <= 8 && it.all { c -> c.isDigit() }) newPin = it },
-            label = { Text("New PIN (numbers only)") },
+            label = { Text("New PIN") },
             singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = AppColors.Accent,
+                unfocusedBorderColor = AppColors.ButtonGray,
+                focusedLabelColor = AppColors.Accent,
+                unfocusedLabelColor = AppColors.TextMuted,
+                cursorColor = AppColors.Accent,
+                focusedTextColor = AppColors.TextPrimary,
+                unfocusedTextColor = AppColors.TextPrimary
+            ),
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -446,14 +581,25 @@ fun ChangePinScreen(
             onValueChange = { if (it.length <= 8 && it.all { c -> c.isDigit() }) confirmPin = it },
             label = { Text("Confirm PIN") },
             singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = AppColors.Accent,
+                unfocusedBorderColor = AppColors.ButtonGray,
+                focusedLabelColor = AppColors.Accent,
+                unfocusedLabelColor = AppColors.TextMuted,
+                cursorColor = AppColors.Accent,
+                focusedTextColor = AppColors.TextPrimary,
+                unfocusedTextColor = AppColors.TextPrimary
+            ),
             modifier = Modifier.fillMaxWidth()
         )
 
         if (error.isNotEmpty()) {
-            Text(error, color = Color.Red, modifier = Modifier.padding(top = 8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(error, color = AppColors.Danger, fontSize = 13.sp)
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(32.dp))
 
         Button(
             onClick = {
@@ -463,14 +609,19 @@ fun ChangePinScreen(
                     else -> onPinChanged(newPin)
                 }
             },
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9500)),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent)
         ) {
-            Text("Save New PIN")
+            Text("Save PIN", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
         }
 
-        TextButton(onClick = onBack, modifier = Modifier.padding(top = 16.dp)) {
-            Text("Cancel", color = Color.Gray)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        TextButton(onClick = onBack) {
+            Text("Cancel", color = AppColors.TextSecondary)
         }
     }
 }
@@ -516,6 +667,6 @@ fun formatFileSize(bytes: Long): String {
     return when {
         bytes < 1024 -> "$bytes B"
         bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-        else -> "${bytes / (1024 * 1024)} MB"
+        else -> "${"%.1f".format(bytes / (1024.0 * 1024.0))} MB"
     }
 }
