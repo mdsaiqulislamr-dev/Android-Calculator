@@ -7,9 +7,12 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
-    name: Build Debug APK
+    name: Build & Publish APK
     runs-on: ubuntu-latest
 
     steps:
@@ -33,10 +36,41 @@ jobs:
       - name: Build Debug APK
         run: gradle assembleDebug --stacktrace --no-daemon
 
-      - name: Upload APK
+      - name: Rename APK
+        run: |
+          mkdir -p release
+          cp app/build/outputs/apk/debug/*.apk release/Calculator-Vault.apk
+          ls -la release/
+
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: calculator-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: release/Calculator-Vault.apk
           retention-days: 30
           if-no-files-found: error
+
+      # Only publish release on main branch (not on PR)
+      - name: Create or Update Release
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Build
+          body: |
+            ## Calculator Vault - Latest APK
+
+            **How to use:**
+            1. Download `Calculator-Vault.apk`
+            2. Install on your Android phone
+            3. Open the app (looks like a normal calculator)
+            4. Type `1234` and press `=` to open the secret vault
+
+            ---
+            Auto-updated on every successful build from `main` branch.
+          files: release/Calculator-Vault.apk
+          draft: false
+          prerelease: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
