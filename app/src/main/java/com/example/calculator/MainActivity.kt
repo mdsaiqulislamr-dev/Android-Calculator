@@ -13,9 +13,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,7 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -34,141 +30,178 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.example.calculator.ui.theme.CalculatorTheme
 import java.io.File
 import java.io.FileOutputStream
 
-object C {
-    val Bg = Color(0xFF0A0A0A)
-    val Surface = Color(0xFF141414)
-    val Card = Color(0xFF1E1E1E)
-    val Card2 = Color(0xFF252525)
-    val Btn = Color(0xFF2C2C2C)
-    val BtnGray = Color(0xFF3D3D3D)
+object AppColors {
+    val Background = Color(0xFF0D0D0D)
+    val Surface = Color(0xFF1A1A1A)
+    val SurfaceElevated = Color(0xFF242424)
+    val ButtonDark = Color(0xFF2C2C2C)
+    val ButtonGray = Color(0xFF3A3A3A)
     val Accent = Color(0xFFFF9F0A)
-    val AccentSoft = Color(0x33FF9F0A)
-    val Text = Color(0xFFF5F5F5)
-    val Text2 = Color(0xFFB0B0B0)
-    val Muted = Color(0xFF6E6E6E)
+    val TextPrimary = Color(0xFFFFFFFF)
+    val TextSecondary = Color(0xFFABABAB)
+    val TextMuted = Color(0xFF6B6B6B)
     val Danger = Color(0xFFFF453A)
 }
-
-enum class Screen { Calc, Vault, Settings, ChangePin }
-enum class FType { IMAGE, VIDEO, AUDIO, DOC, OTHER }
-
-data class VFile(val file: File, val type: FType)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            CalculatorTheme { AppRoot() }
+            CalculatorTheme {
+                AppContent()
+            }
         }
     }
 }
 
 @Composable
-fun AppRoot() {
-    val ctx = LocalContext.current
-    val prefs = remember { ctx.getSharedPreferences("vault_prefs", Context.MODE_PRIVATE) }
-    var screen by remember { mutableStateOf(Screen.Calc) }
-    val pin = prefs.getString("secret_pin", "1234") ?: "1234"
+fun AppContent() {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("vault_prefs", Context.MODE_PRIVATE) }
+    var isVaultOpen by remember { mutableStateOf(false) }
+    var showChangePin by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
 
-    when (screen) {
-        Screen.Calc -> CalcScreen(pin) { screen = Screen.Vault }
-        Screen.Vault -> VaultScreen(
-            onLock = { screen = Screen.Calc },
-            onSettings = { screen = Screen.Settings }
-        )
-        Screen.Settings -> SettingsScreen(
-            onBack = { screen = Screen.Vault },
-            onChangePin = { screen = Screen.ChangePin },
-            onLock = { screen = Screen.Calc }
-        )
-        Screen.ChangePin -> ChangePinScreen(
-            onSaved = {
+    val secretPin = prefs.getString("secret_pin", "1234") ?: "1234"
+
+    when {
+        !isVaultOpen -> CalculatorScreen(secretPin) { isVaultOpen = true }
+        showChangePin -> ChangePinScreen(
+            onPinChanged = {
                 prefs.edit().putString("secret_pin", it).apply()
-                screen = Screen.Settings
+                showChangePin = false
             },
-            onBack = { screen = Screen.Settings }
+            onBack = { showChangePin = false }
+        )
+        showSettings -> SettingsScreen(
+            fileCount = File(context.filesDir, "secret_vault").listFiles()?.size ?: 0,
+            onBack = { showSettings = false },
+            onChangePin = { showChangePin = true },
+            onLock = { isVaultOpen = false; showSettings = false }
+        )
+        else -> VaultScreen(
+            onLock = { isVaultOpen = false },
+            onChangePin = { showChangePin = true },
+            onSettings = { showSettings = true }
         )
     }
 }
 
 @Composable
-fun CalcScreen(secretPin: String, onUnlock: () -> Unit) {
+fun CalculatorScreen(secretPin: String, onVaultUnlock: () -> Unit) {
     var display by remember { mutableStateOf("0") }
-    var prev by remember { mutableStateOf(0.0) }
-    var op by remember { mutableStateOf("") }
-    var fresh by remember { mutableStateOf(true) }
+    var previousValue by remember { mutableStateOf(0.0) }
+    var operation by remember { mutableStateOf("") }
+    var newNumber by remember { mutableStateOf(true) }
 
-    fun num(n: String) {
-        if (fresh) { display = n; fresh = false }
-        else if (display == "0") display = n
-        else if (display.length < 12) display += n
-    }
-    fun oper(o: String) { prev = display.toDoubleOrNull() ?: 0.0; op = o; fresh = true }
-    fun eq() {
-        if (display == secretPin) { onUnlock(); display = "0"; fresh = true; return }
-        val cur = display.toDoubleOrNull() ?: 0.0
-        val r = when (op) {
-            "+" -> prev + cur; "-" -> prev - cur; "×" -> prev * cur
-            "÷" -> if (cur != 0.0) prev / cur else Double.NaN; else -> cur
+    fun onNumberClick(number: String) {
+        if (newNumber) { display = number; newNumber = false }
+        else {
+            if (display == "0") display = number
+            else if (display.length < 12) display += number
         }
-        display = if (r.isNaN()) "Error" else if (r % 1 == 0.0) r.toLong().toString()
-        else String.format("%.8f", r).trimEnd('0').trimEnd('.')
-        op = ""; fresh = true
     }
-    fun clr() { display = "0"; prev = 0.0; op = ""; fresh = true }
-    fun del() { if (display.length > 1) display = display.dropLast(1) else { display = "0"; fresh = true } }
-    fun fmtPrev() = if (prev % 1 == 0.0) prev.toLong().toString() else prev.toString()
 
-    Box(Modifier = Modifier.fillMaxSize().background(C.Bg)) {
+    fun onOperationClick(op: String) {
+        previousValue = display.toDoubleOrNull() ?: 0.0
+        operation = op
+        newNumber = true
+    }
+
+    fun onEqualsClick() {
+        if (display == secretPin) {
+            onVaultUnlock()
+            display = "0"
+            newNumber = true
+            return
+        }
+        val current = display.toDoubleOrNull() ?: 0.0
+        val result = when (operation) {
+            "+" -> previousValue + current
+            "-" -> previousValue - current
+            "×" -> previousValue * current
+            "÷" -> if (current != 0.0) previousValue / current else Double.NaN
+            else -> current
+        }
+        display = if (result.isNaN()) "Error" else {
+            if (result % 1 == 0.0) result.toLong().toString()
+            else String.format("%.8f", result).trimEnd('0').trimEnd('.')
+        }
+        operation = ""
+        newNumber = true
+    }
+
+    fun onClear() { display = "0"; previousValue = 0.0; operation = ""; newNumber = true }
+    fun onDelete() {
+        if (display.length > 1) display = display.dropLast(1)
+        else { display = "0"; newNumber = true }
+    }
+    fun formatPrev() = if (previousValue % 1 == 0.0) previousValue.toLong().toString() else previousValue.toString()
+
+    Box(modifier = Modifier.fillMaxSize().background(AppColors.Background)) {
         Column(
-            Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 24.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.Bottom
         ) {
-            Column(Modifier = Modifier.fillMaxWidth().padding(bottom = 28.dp), horizontalAlignment = Alignment.End) {
-                if (op.isNotEmpty()) {
-                    Text("${fmtPrev()} $op", color = C.Muted, fontSize = 18.sp)
-                    Spacer(Modifier.height(4.dp))
+            Box(modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp), contentAlignment = Alignment.BottomEnd) {
+                Column(horizontalAlignment = Alignment.End) {
+                    if (operation.isNotEmpty()) {
+                        Text("${formatPrev()} $operation", color = AppColors.TextMuted, fontSize = 18.sp, fontWeight = FontWeight.Light)
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                    Text(
+                        display, color = AppColors.TextPrimary,
+                        fontSize = if (display.length > 8) 42.sp else 56.sp,
+                        fontWeight = FontWeight.Light, fontFamily = FontFamily.SansSerif,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
                 }
-                Text(
-                    display, color = C.Text,
-                    fontSize = if (display.length > 8) 40.sp else 56.sp,
-                    fontWeight = FontWeight.Light, fontFamily = FontFamily.SansSerif,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis
-                )
             }
-            val rows = listOf(
-                listOf("C", "⌫", "%", "÷"), listOf("7", "8", "9", "×"),
-                listOf("4", "5", "6", "-"), listOf("1", "2", "3", "+"), listOf("0", ".", "=")
+
+            val buttons = listOf(
+                listOf("C", "⌫", "%", "÷"),
+                listOf("7", "8", "9", "×"),
+                listOf("4", "5", "6", "-"),
+                listOf("1", "2", "3", "+"),
+                listOf("0", ".", "=")
             )
-            rows.forEach { row ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+
+            buttons.forEach { row ->
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     row.forEach { label ->
-                        val isOp = label in listOf("÷", "×", "-", "+", "=")
-                        val isSp = label in listOf("C", "⌫", "%")
-                        val w = if (label == "0") 2.1f else 1f
-                        val bg = when { isOp -> C.Accent; isSp -> C.BtnGray; else -> C.Btn }
-                        val tc = if (isSp) C.Bg else C.Text
+                        val isOperator = label in listOf("÷", "×", "-", "+", "=")
+                        val isSpecial = label in listOf("C", "⌫", "%")
+                        val weight = if (label == "0") 2.1f else 1f
+                        val bgColor = when {
+                            isOperator -> AppColors.Accent
+                            isSpecial -> AppColors.ButtonGray
+                            else -> AppColors.ButtonDark
+                        }
+                        val textColor = if (isSpecial) AppColors.Background else AppColors.TextPrimary
+
                         Box(
-                            Modifier.weight(w).height(72.dp).clip(CircleShape).background(bg)
+                            modifier = Modifier.weight(weight).height(74.dp).clip(CircleShape).background(bgColor)
                                 .clickable {
                                     when (label) {
-                                        "C" -> clr(); "⌫" -> del()
+                                        "C" -> onClear()
+                                        "⌫" -> onDelete()
                                         "%" -> display = ((display.toDoubleOrNull() ?: 0.0) / 100).toString()
-                                        "÷", "×", "-", "+" -> oper(label); "=" -> eq()
+                                        "÷", "×", "-", "+" -> onOperationClick(label)
+                                        "=" -> onEqualsClick()
                                         "." -> if (!display.contains(".")) {
-                                            if (fresh) { display = "0."; fresh = false } else display += "."
+                                            if (newNumber) { display = "0."; newNumber = false } else display += "."
                                         }
-                                        else -> num(label)
+                                        else -> onNumberClick(label)
                                     }
                                 },
                             contentAlignment = Alignment.Center
-                        ) { Text(label, color = tc, fontSize = 26.sp, fontWeight = FontWeight.Medium) }
+                        ) {
+                            Text(label, color = textColor, fontSize = 28.sp, fontWeight = FontWeight.Medium)
+                        }
                     }
                 }
             }
@@ -177,332 +210,281 @@ fun CalcScreen(secretPin: String, onUnlock: () -> Unit) {
 }
 
 @Composable
-fun VaultScreen(onLock: () -> Unit, onSettings: () -> Unit) {
-    val ctx = LocalContext.current
-    val dir = remember { File(ctx.filesDir, "secret_vault").apply { if (!exists()) mkdirs() } }
-    var files by remember { mutableStateOf(loadFiles(dir)) }
-    var del by remember { mutableStateOf<VFile?>(null) }
-    var grid by remember { mutableStateOf(true) }
+fun VaultScreen(onLock: () -> Unit, onChangePin: () -> Unit, onSettings: () -> Unit) {
+    val context = LocalContext.current
+    val vaultDir = remember { File(context.filesDir, "secret_vault").apply { if (!exists()) mkdirs() } }
+    var files by remember { mutableStateOf(vaultDir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList()) }
+    var showDeleteConfirm by remember { mutableStateOf<File?>(null) }
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
-        uris.forEach { uri ->
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let {
             try {
-                val name = fileName(ctx, uri) ?: "file_${System.currentTimeMillis()}"
-                ctx.contentResolver.openInputStream(uri)?.use { inp ->
-                    FileOutputStream(File(dir, name)).use { out -> inp.copyTo(out) }
+                val name = getFileName(context, it) ?: "file_${System.currentTimeMillis()}"
+                context.contentResolver.openInputStream(it)?.use { input ->
+                    FileOutputStream(File(vaultDir, name)).use { output -> input.copyTo(output) }
                 }
+                files = vaultDir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList()
             } catch (_: Exception) {}
         }
-        files = loadFiles(dir)
     }
 
-    Column(Modifier.fillMaxSize().background(C.Bg)) {
-        // Top bar
+    Column(modifier = Modifier.fillMaxSize().background(AppColors.Background)) {
         Row(
-            Modifier.fillMaxWidth().background(C.Surface).padding(16.dp),
+            modifier = Modifier.fillMaxWidth().background(AppColors.Surface).padding(horizontal = 16.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f)) {
-                Text("Secret Vault", color = C.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Text("${files.size} secured items", color = C.Muted, fontSize = 13.sp)
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Secret Vault", color = AppColors.TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text("${files.size} items secured", color = AppColors.TextMuted, fontSize = 13.sp)
             }
-            Text(
-                if (grid) "List" else "Grid",
-                color = C.Text2, fontSize = 13.sp,
-                modifier = Modifier.clickable { grid = !grid }.padding(8.dp)
-            )
-            Text("Settings", color = C.Text2, fontSize = 13.sp,
+            Text("Settings", color = AppColors.TextSecondary, fontSize = 13.sp,
                 modifier = Modifier.clickable { onSettings() }.padding(8.dp))
-            Text("Lock", color = C.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+            Text("PIN", color = AppColors.Accent, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                modifier = Modifier.clickable { onChangePin() }.padding(8.dp))
+            Text("Lock", color = AppColors.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium,
                 modifier = Modifier.clickable { onLock() }.padding(8.dp))
         }
 
         Button(
-            onClick = { picker.launch("*/*") },
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).height(50.dp),
+            onClick = { filePicker.launch("*/*") },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).height(50.dp),
             shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = C.Accent)
+            colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent)
         ) {
-            Text("+  Add Photos, Videos & Files", color = Color.Black, fontWeight = FontWeight.SemiBold)
+            Text("+  Add Photos, Videos & Files", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
         }
 
         if (files.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("No files yet", color = C.Text2, fontSize = 18.sp, fontWeight = FontWeight.Medium)
-                    Spacer(Modifier.height(6.dp))
-                    Text("Tap + to hide media", color = C.Muted, fontSize = 14.sp)
-                }
-            }
-        } else if (grid) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                contentPadding = PaddingValues(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(files) { item ->
-                    ThumbCard(item, onClick = { openFile(ctx, item.file) }, onLong = { del = item })
+                    Text("No files yet", color = AppColors.TextSecondary, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text("Add photos, videos or any file", color = AppColors.TextMuted, fontSize = 14.sp)
                 }
             }
         } else {
             LazyColumn(
-                contentPadding = PaddingValues(12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                contentPadding = PaddingValues(bottom = 24.dp)
             ) {
-                items(files) { item ->
-                    ListRow(item, onClick = { openFile(ctx, item.file) }, onDel = { del = item })
+                items(files) { file ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 5.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(AppColors.SurfaceElevated)
+                            .clickable {
+                                try {
+                                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+                                    context.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                                        setDataAndType(uri, getMimeType(file.name))
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    })
+                                } catch (_: Exception) {}
+                            }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(AppColors.Surface),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(getFileLabel(file.name), color = AppColors.Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(file.name, color = AppColors.TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(formatFileSize(file.length()), color = AppColors.TextMuted, fontSize = 12.sp)
+                        }
+                        Text("Delete", color = AppColors.Danger, fontSize = 13.sp,
+                            modifier = Modifier.clickable { showDeleteConfirm = file })
+                    }
                 }
             }
         }
     }
 
-    del?.let { item ->
+    showDeleteConfirm?.let { file ->
         AlertDialog(
-            onDismissRequest = { del = null },
-            containerColor = C.Card,
-            title = { Text("Delete?", color = C.Text, fontWeight = FontWeight.SemiBold) },
-            text = { Text(item.file.name, color = C.Text2) },
+            onDismissRequest = { showDeleteConfirm = null },
+            containerColor = AppColors.Surface,
+            title = { Text("Delete file?", color = AppColors.TextPrimary, fontWeight = FontWeight.SemiBold) },
+            text = { Text("Delete ${file.name}?", color = AppColors.TextSecondary) },
             confirmButton = {
                 TextButton(onClick = {
-                    item.file.delete(); files = loadFiles(dir); del = null
-                }) { Text("Delete", color = C.Danger, fontWeight = FontWeight.Bold) }
+                    file.delete()
+                    files = vaultDir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList()
+                    showDeleteConfirm = null
+                }) { Text("Delete", color = AppColors.Danger, fontWeight = FontWeight.SemiBold) }
             },
             dismissButton = {
-                TextButton(onClick = { del = null }) { Text("Cancel", color = C.Text2) }
+                TextButton(onClick = { showDeleteConfirm = null }) {
+                    Text("Cancel", color = AppColors.TextSecondary)
+                }
             }
         )
     }
 }
 
 @Composable
-fun ThumbCard(item: VFile, onClick: () -> Unit, onLong: () -> Unit) {
-    val ctx = LocalContext.current
-    Box(
-        Modifier.aspectRatio(1f).clip(RoundedCornerShape(12.dp)).background(C.Card2).clickable(onClick = onClick)
-    ) {
-        when (item.type) {
-            FType.IMAGE, FType.VIDEO -> {
-                AsyncImage(
-                    model = ImageRequest.Builder(ctx).data(item.file).crossfade(true).build(),
-                    contentDescription = item.file.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-                if (item.type == FType.VIDEO) {
-                    Box(Modifier.fillMaxSize().background(Color(0x55000000)), contentAlignment = Alignment.Center) {
-                        Text("▶", color = Color.White, fontSize = 28.sp)
-                    }
-                }
-            }
-            else -> {
-                Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    Text(typeLabel(item.type), color = C.Accent, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text(item.file.extension.uppercase().ifEmpty { "FILE" }, color = C.Muted, fontSize = 11.sp)
-                }
-            }
-        }
-        Box(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))
-                .padding(6.dp)
+fun SettingsScreen(fileCount: Int, onBack: () -> Unit, onChangePin: () -> Unit, onLock: () -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().background(AppColors.Background)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().background(AppColors.Surface).padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(item.file.name, color = Color.White, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("Back", color = AppColors.TextSecondary, modifier = Modifier.clickable { onBack() }.padding(end = 16.dp))
+            Text("Settings", color = AppColors.TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+        }
+
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(AppColors.SurfaceElevated).padding(20.dp)
+            ) {
+                Text("Vault Storage", color = AppColors.TextMuted, fontSize = 13.sp)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("$fileCount files secured", color = AppColors.TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            }
+
+            Text("SECURITY", color = AppColors.TextMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+
+            SettingsRow("Change PIN", "Update your secret code", onChangePin)
+            SettingsRow("Lock Vault", "Return to calculator", onLock)
+
+            Text("ABOUT", color = AppColors.TextMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+
+            SettingsRow("Calculator Vault", "Version 2.0", {})
+            SettingsRow("How to unlock", "Type PIN then press =", {})
+
+            Text(
+                "Files are stored in private app storage. Other apps cannot access them.",
+                color = AppColors.TextMuted, fontSize = 12.sp, modifier = Modifier.padding(8.dp)
+            )
         }
     }
 }
 
 @Composable
-fun ListRow(item: VFile, onClick: () -> Unit, onDel: () -> Unit) {
-    val ctx = LocalContext.current
+fun SettingsRow(title: String, subtitle: String, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.Card).clickable(onClick = onClick).padding(12.dp),
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(AppColors.SurfaceElevated)
+            .clickable(onClick = onClick).padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)).background(C.Card2), contentAlignment = Alignment.Center) {
-            if (item.type == FType.IMAGE || item.type == FType.VIDEO) {
-                AsyncImage(
-                    model = ImageRequest.Builder(ctx).data(item.file).crossfade(true).build(),
-                    contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Text(typeLabel(item.type), color = C.Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = AppColors.TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text(subtitle, color = AppColors.TextMuted, fontSize = 12.sp)
         }
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            Text(item.file.name, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("${sizeStr(item.file.length())} · ${item.type.name.lowercase()}", color = C.Muted, fontSize = 12.sp)
-        }
-        Text("Delete", color = C.Danger, fontSize = 13.sp, modifier = Modifier.clickable { onDel() }.padding(8.dp))
+        Text(">", color = AppColors.TextMuted)
     }
 }
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onChangePin: () -> Unit, onLock: () -> Unit) {
-    val ctx = LocalContext.current
-    val dir = File(ctx.filesDir, "secret_vault")
-    val files = remember { loadFiles(dir) }
-    val total = files.sumOf { it.file.length() }
-    val imgs = files.count { it.type == FType.IMAGE }
-    val vids = files.count { it.type == FType.VIDEO }
+fun ChangePinScreen(onPinChanged: (String) -> Unit, onBack: () -> Unit) {
+    var newPin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf("") }
 
-    Column(Modifier.fillMaxSize().background(C.Bg)) {
-        Row(Modifier.fillMaxWidth().background(C.Surface).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("← Back", color = C.Text2, modifier = Modifier.clickable { onBack() }.padding(end = 16.dp))
-            Text("Settings", color = C.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-        }
-        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item {
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(C.Card).padding(20.dp)) {
-                    Text("Vault Storage", color = C.Text2, fontSize = 13.sp)
-                    Spacer(Modifier.height(6.dp))
-                    Text(sizeStr(total), color = C.Text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(14.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                        Column { Text("${files.size}", color = C.Accent, fontWeight = FontWeight.Bold); Text("Total", color = C.Muted, fontSize = 11.sp) }
-                        Column { Text("$imgs", color = C.Accent, fontWeight = FontWeight.Bold); Text("Photos", color = C.Muted, fontSize = 11.sp) }
-                        Column { Text("$vids", color = C.Accent, fontWeight = FontWeight.Bold); Text("Videos", color = C.Muted, fontSize = 11.sp) }
-                    }
-                }
-            }
-            item { Text("SECURITY", color = C.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
-            item { SettingRow("Change PIN", "Update your secret code", onChangePin) }
-            item { SettingRow("Lock Vault", "Return to calculator", onLock) }
-            item { Text("ABOUT", color = C.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
-            item { SettingRow("Calculator Vault", "Version 2.0", {}) }
-            item { SettingRow("How to unlock", "Type PIN on calculator, press =", {}) }
-            item {
-                Text(
-                    "Files stay in private app storage. Other apps cannot access them.",
-                    color = C.Muted, fontSize = 12.sp, modifier = Modifier.padding(8.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun SettingRow(title: String, sub: String, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.Card).clickable(onClick = onClick).padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
+    Column(
+        modifier = Modifier.fillMaxSize().background(AppColors.Background).padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(C.AccentSoft), contentAlignment = Alignment.Center) {
-            Text("•", color = C.Accent, fontSize = 20.sp)
-        }
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, color = C.Text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-            Text(sub, color = C.Muted, fontSize = 12.sp)
-        }
-        Text(">", color = C.Muted)
-    }
-}
+        Spacer(modifier = Modifier.height(40.dp))
+        Text("Change PIN", color = AppColors.TextPrimary, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("Enter a new 4–8 digit PIN", color = AppColors.TextMuted, fontSize = 14.sp)
+        Spacer(modifier = Modifier.height(40.dp))
 
-@Composable
-fun ChangePinScreen(onSaved: (String) -> Unit, onBack: () -> Unit) {
-    var a by remember { mutableStateOf("") }
-    var b by remember { mutableStateOf("") }
-    var err by remember { mutableStateOf("") }
-    Column(Modifier.fillMaxSize().background(C.Bg).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Spacer(Modifier.height(40.dp))
-        Text("Change PIN", color = C.Text, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Text("4–8 digit numbers only", color = C.Muted, fontSize = 14.sp)
-        Spacer(Modifier.height(32.dp))
         OutlinedTextField(
-            a, { if (it.length <= 8 && it.all { c -> c.isDigit() }) a = it },
+            value = newPin,
+            onValueChange = { if (it.length <= 8 && it.all { c -> c.isDigit() }) newPin = it },
             label = { Text("New PIN") }, singleLine = true, shape = RoundedCornerShape(14.dp),
-            colors = fieldColors(), modifier = Modifier.fillMaxWidth()
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = AppColors.Accent, unfocusedBorderColor = AppColors.ButtonGray,
+                focusedLabelColor = AppColors.Accent, unfocusedLabelColor = AppColors.TextMuted,
+                cursorColor = AppColors.Accent, focusedTextColor = AppColors.TextPrimary, unfocusedTextColor = AppColors.TextPrimary
+            ),
+            modifier = Modifier.fillMaxWidth()
         )
-        Spacer(Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(
-            b, { if (it.length <= 8 && it.all { c -> c.isDigit() }) b = it },
+            value = confirmPin,
+            onValueChange = { if (it.length <= 8 && it.all { c -> c.isDigit() }) confirmPin = it },
             label = { Text("Confirm PIN") }, singleLine = true, shape = RoundedCornerShape(14.dp),
-            colors = fieldColors(), modifier = Modifier.fillMaxWidth()
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = AppColors.Accent, unfocusedBorderColor = AppColors.ButtonGray,
+                focusedLabelColor = AppColors.Accent, unfocusedLabelColor = AppColors.TextMuted,
+                cursorColor = AppColors.Accent, focusedTextColor = AppColors.TextPrimary, unfocusedTextColor = AppColors.TextPrimary
+            ),
+            modifier = Modifier.fillMaxWidth()
         )
-        if (err.isNotEmpty()) { Spacer(Modifier.height(10.dp)); Text(err, color = C.Danger, fontSize = 13.sp) }
-        Spacer(Modifier.height(28.dp))
+        if (error.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(error, color = AppColors.Danger, fontSize = 13.sp)
+        }
+        Spacer(modifier = Modifier.height(32.dp))
         Button(
             onClick = {
                 when {
-                    a.length < 4 -> err = "At least 4 digits"
-                    a != b -> err = "PINs do not match"
-                    else -> onSaved(a)
+                    newPin.length < 4 -> error = "PIN must be at least 4 digits"
+                    newPin != confirmPin -> error = "PINs do not match"
+                    else -> onPinChanged(newPin)
                 }
             },
-            Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = C.Accent)
-        ) { Text("Save PIN", color = Color.Black, fontWeight = FontWeight.SemiBold) }
-        Spacer(Modifier.height(12.dp))
-        TextButton(onClick = onBack) { Text("Cancel", color = C.Text2) }
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent)
+        ) {
+            Text("Save PIN", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        TextButton(onClick = onBack) { Text("Cancel", color = AppColors.TextSecondary) }
     }
 }
 
-@Composable
-fun fieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = C.Accent, unfocusedBorderColor = C.BtnGray,
-    focusedLabelColor = C.Accent, unfocusedLabelColor = C.Muted,
-    cursorColor = C.Accent, focusedTextColor = C.Text, unfocusedTextColor = C.Text
-)
-
-fun loadFiles(dir: File) = dir.listFiles()?.sortedByDescending { it.lastModified() }
-    ?.map { VFile(it, detect(it.name)) } ?: emptyList()
-
-fun detect(name: String): FType {
-    val e = name.lowercase()
-    return when {
-        e.endsWith(".jpg") || e.endsWith(".jpeg") || e.endsWith(".png") || e.endsWith(".webp") || e.endsWith(".gif") -> FType.IMAGE
-        e.endsWith(".mp4") || e.endsWith(".mkv") || e.endsWith(".avi") || e.endsWith(".mov") || e.endsWith(".webm") -> FType.VIDEO
-        e.endsWith(".mp3") || e.endsWith(".wav") || e.endsWith(".m4a") -> FType.AUDIO
-        e.endsWith(".pdf") || e.endsWith(".doc") || e.endsWith(".txt") -> FType.DOC
-        else -> FType.OTHER
-    }
-}
-
-fun typeLabel(t: FType) = when (t) {
-    FType.IMAGE -> "IMG"; FType.VIDEO -> "VID"; FType.AUDIO -> "AUD"; FType.DOC -> "DOC"; else -> "FILE"
-}
-
-fun openFile(ctx: Context, file: File) {
-    try {
-        val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.provider", file)
-        ctx.startActivity(Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, mime(file.name))
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        })
-    } catch (_: Exception) {}
-}
-
-fun fileName(ctx: Context, uri: Uri): String? {
-    var n: String? = null
-    ctx.contentResolver.query(uri, null, null, null, null)?.use { c ->
-        if (c.moveToFirst()) {
-            val i = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (i >= 0) n = c.getString(i)
+fun getFileName(context: Context, uri: Uri): String? {
+    var name: String? = null
+    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0) name = cursor.getString(index)
         }
     }
-    return n
+    return name
 }
 
-fun mime(name: String): String {
-    val e = name.lowercase()
+fun getFileLabel(name: String): String {
+    val lower = name.lowercase()
     return when {
-        e.endsWith(".mp4") -> "video/mp4"
-        e.endsWith(".jpg") || e.endsWith(".jpeg") -> "image/jpeg"
-        e.endsWith(".png") -> "image/png"
-        e.endsWith(".webp") -> "image/webp"
-        e.endsWith(".gif") -> "image/gif"
-        e.endsWith(".pdf") -> "application/pdf"
-        e.endsWith(".mp3") -> "audio/mpeg"
+        lower.endsWith(".mp4") || lower.endsWith(".mkv") || lower.endsWith(".avi") || lower.endsWith(".mov") -> "VID"
+        lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png") || lower.endsWith(".webp") || lower.endsWith(".gif") -> "IMG"
+        lower.endsWith(".pdf") -> "PDF"
+        lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".m4a") -> "AUD"
+        else -> "FILE"
+    }
+}
+
+fun getMimeType(name: String): String {
+    val lower = name.lowercase()
+    return when {
+        lower.endsWith(".mp4") -> "video/mp4"
+        lower.endsWith(".mkv") -> "video/x-matroska"
+        lower.endsWith(".jpg") || lower.endsWith(".jpeg") -> "image/jpeg"
+        lower.endsWith(".png") -> "image/png"
+        lower.endsWith(".webp") -> "image/webp"
+        lower.endsWith(".gif") -> "image/gif"
+        lower.endsWith(".pdf") -> "application/pdf"
+        lower.endsWith(".mp3") -> "audio/mpeg"
         else -> "*/*"
     }
 }
 
-fun sizeStr(b: Long) = when {
-    b < 1024 -> "$b B"
-    b < 1024 * 1024 -> "${b / 1024} KB"
-    else -> "${"%.1f".format(b / (1024.0 * 1024.0))} MB"
+fun formatFileSize(bytes: Long): String {
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+        else -> "${"%.1f".format(bytes / (1024.0 * 1024.0))} MB"
+    }
 }
