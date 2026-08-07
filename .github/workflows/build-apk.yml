@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: Build & Publish APK
+    name: Build & Publish Signed APK
     runs-on: ubuntu-latest
 
     steps:
@@ -28,29 +28,34 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Decode Keystore
+        run: |
+          mkdir -p keystore
+          base64 -d keystore/calculator-release.jks.b64 > keystore/calculator-release.jks
+          ls -la keystore/
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
 
-      - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace --no-daemon
+      - name: Build Signed Release APK
+        run: gradle assembleRelease --stacktrace --no-daemon
 
-      - name: Rename APK
+      - name: Prepare APK
         run: |
           mkdir -p release
-          cp app/build/outputs/apk/debug/*.apk release/Calculator-Vault.apk
+          cp app/build/outputs/apk/release/*.apk release/Calculator-Vault.apk
           ls -la release/
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: calculator-debug-apk
+          name: calculator-signed-apk
           path: release/Calculator-Vault.apk
           retention-days: 30
           if-no-files-found: error
 
-      # Only publish release on main branch (not on PR)
       - name: Create or Update Release
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
@@ -58,16 +63,18 @@ jobs:
           tag_name: latest
           name: Latest Build
           body: |
-            ## Calculator Vault - Latest APK
+            ## Calculator Vault - Signed APK
 
-            **How to use:**
+            **Same signature every build** — you can update over previous installs.
+
+            ### How to use:
             1. Download `Calculator-Vault.apk`
             2. Install on your Android phone
             3. Open the app (looks like a normal calculator)
             4. Type `1234` and press `=` to open the secret vault
 
             ---
-            Auto-updated on every successful build from `main` branch.
+            Auto-updated on every successful build from `main`.
           files: release/Calculator-Vault.apk
           draft: false
           prerelease: false
